@@ -6,6 +6,7 @@ import { handleLDCached } from "./lds";
 import { csv2json } from "./csv2json";
 
 const s3 = new Bun.S3Client({ region: "us-east-1", bucket: "heftos-ged" });
+const processedLDs = new Set<string>();
 
 mongoose
   .connect(process.env.MONGO_URI!, { dbName: "heftos-ged" })
@@ -15,28 +16,39 @@ mongoose
 
 async function main() {
   const rowsPerPage = await handleAnexoXIVCached();
+  await handleLDsRecursive(rowsPerPage);
+}
+
+async function handleLDsRecursive(
+  rowsPerPage: NonNullable<
+    Awaited<ReturnType<typeof handleAnexoXIVCached | typeof handleLDCached>>
+  >,
+) {
   await handleDownloadMentionedLDs(rowsPerPage);
 
   const assets = await readdir("./assets");
   for (const filename of assets) {
-    if (
-      !filename.startsWith("LD-") ||
-      !filename.endsWith(".pdf") ||
-      !filename.endsWith(".PDF")
-    )
-      continue;
+    if (!isLDPdf(filename)) continue;
+    if (processedLDs.has(filename)) continue;
+    processedLDs.add(filename);
 
     const result = await handleLDCached(`./assets/${filename}`);
     if (!result) {
       console.error(`No tables found in ${filename}`);
       continue;
     }
+
+    await handleLDsRecursive(result);
   }
 }
 
 async function handleDownloadMentionedLDs(
-  rowsPerPage: Awaited<ReturnType<typeof handleAnexoXIVCached>>,
+  rowsPerPage: NonNullable<
+    Awaited<ReturnType<typeof handleAnexoXIVCached | typeof handleLDCached>>
+  >,
 ) {
+  if (Object.values(rowsPerPage).flat().length === 0) return;
+
   const documentsCollection = mongoose.connection.db!.collection<{
     blobPath: string;
   }>("documents");
@@ -93,4 +105,8 @@ async function handleDownloadMentionedLDs(
     const file = await s3.file(document.blobPath).arrayBuffer();
     await Bun.write(`./assets/${document.blobPath.split("/").pop()}`, file);
   }
+}
+
+function isLDPdf(filename: string) {
+  return filename.startsWith("LD-") && /\.(pdf)$/i.test(filename);
 }

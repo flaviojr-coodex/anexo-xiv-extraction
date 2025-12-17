@@ -71,11 +71,11 @@ function extractAndParseAnexoXIVTable(table: AzureTable) {
   }
 
   const json = csv2json(csv, {
-    ITEM: "item",
-    REVISÃO: "revision",
+    // ITEM: "item",
+    // REVISÃO: "revision",
     NÚMERO: "documentName",
     NUMERO: "documentName",
-    "TÍTULO DO DOCUMENTO": "title",
+    // "TÍTULO DO DOCUMENTO": "title",
   });
 
   return {

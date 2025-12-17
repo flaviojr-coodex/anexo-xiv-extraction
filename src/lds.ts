@@ -79,7 +79,11 @@ function extractAndParseTable(table: AzureTable) {
   //   strCsv = csv.join("\n");
   // }
 
-  const json = csv2json(csv);
+  const json = csv2json(csv, {
+    "Nº DO DOCUMENTO": "documentName",
+    NÚMERO: "documentName",
+    NUMERO: "documentName",
+  });
 
   return {
     json,
