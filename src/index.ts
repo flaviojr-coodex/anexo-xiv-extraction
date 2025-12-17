@@ -1,15 +1,13 @@
 import { extractAndParseTable, type AzureTable } from "./handle-tables";
 import { analyzeDocument } from "./document-intelligence";
-import { csv2json } from "./csv2json";
 
 async function main() {
-  const data = await analyzeDocumentCached("ANEXO XIV.pdf", `3-28`);
+  const data = await analyzeDocumentCached("./assets/ANEXO XIV.pdf", `3-28`);
   if (!data.tables) {
     console.error("No tables found");
     process.exit(1);
   }
 
-  const pageIndexes: Record<number, number> = {};
   const htmlsPerPage: Record<number, string[]> = {};
 
   for (const table of data.tables) {
@@ -19,27 +17,17 @@ async function main() {
     const page = table.boundingRegions?.[0]?.pageNumber
       ? table.boundingRegions[0].pageNumber
       : 0;
-    pageIndexes[page] = pageIndexes[page] ? pageIndexes[page] + 1 : 1;
-    htmlsPerPage[page] = htmlsPerPage[page] || [];
 
-    const { csv, html } = result;
+    htmlsPerPage[page] = htmlsPerPage[page] || [];
+    await writeResults(page, result);
+
+    const { html, json } = result;
     htmlsPerPage[page].push(html);
 
-    const json = csv2json(csv, {
-      ITEM: "item",
-      REVISÃO: "revision",
-      NÚMERO: "documentName",
-      NUMERO: "documentName",
-      "TÍTULO DO DOCUMENTO": "title",
-    });
-
-    const outputName = `table_${page}_${pageIndexes[page]}`;
-    await Bun.write(`./tables/${outputName}.html`, html);
-    await Bun.write(`./tables/${outputName}.csv`, csv);
-    await Bun.write(
-      `./tables/${outputName}.json`,
-      JSON.stringify(json, null, 2),
-    );
+    const lds = json.filter((item) => item.documentName.startsWith("LD-"));
+    for (const item of lds) {
+      console.log(page, item.documentName);
+    }
   }
 
   await Bun.write(`./tables/index.html`, joinHTMLPageTables(htmlsPerPage));
@@ -55,6 +43,17 @@ async function analyzeDocumentCached(path: string, pages: string) {
   const data = await analyzeDocument(path, pages);
   await Bun.write(jsonPath, JSON.stringify(data, null, 2));
   return data;
+}
+
+async function writeResults(
+  page: number,
+  result: NonNullable<ReturnType<typeof extractAndParseTable>>,
+) {
+  const { csv, html, json } = result;
+
+  await Bun.write(`./tables/table_${page}.html`, html);
+  await Bun.write(`./tables/table_${page}.csv`, csv);
+  await Bun.write(`./tables/table_${page}.json`, JSON.stringify(json, null, 2));
 }
 
 function joinHTMLPageTables(htmlsPerPage: Record<number, string[]>) {

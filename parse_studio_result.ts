@@ -1,5 +1,5 @@
 async function main() {
-  const raw = await Bun.file("./ANEXO XIV.pdf.json").json();
+  const raw = await Bun.file("./assets/ANEXO XIV.pdf.json").json();
   const result = raw.analyzeResult;
 
   const parsed = {
@@ -14,7 +14,7 @@ async function main() {
       ),
     })),
   };
-  await Bun.write("./ANEXO XIV.json", JSON.stringify(parsed, null, 2));
+  await Bun.write("./assets/ANEXO XIV.json", JSON.stringify(parsed, null, 2));
 }
 
 main();

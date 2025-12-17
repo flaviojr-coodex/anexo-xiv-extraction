@@ -2,6 +2,7 @@ import type {
   AnalyzeResult,
   AnalyzedDocument,
 } from "@azure/ai-form-recognizer";
+import { csv2json } from "./csv2json";
 
 type RawAzureTable = Required<
   AnalyzeResult<AnalyzedDocument>
@@ -73,7 +74,16 @@ export function extractAndParseTable(table: AzureTable) {
     strCsv = csv.join("\n");
   }
 
+  const json = csv2json(csv, {
+    ITEM: "item",
+    REVISÃO: "revision",
+    NÚMERO: "documentName",
+    NUMERO: "documentName",
+    "TÍTULO DO DOCUMENTO": "title",
+  });
+
   return {
+    json,
     csv: strCsv,
     html: tableToHTML(table, { skipRows: rowsOffset, columnFix }),
   };
