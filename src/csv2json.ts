@@ -34,7 +34,7 @@ function unquote(value: string | undefined): string | undefined {
 
 export function csv2json<U extends string, T extends Record<U, string>>(
   csv: string[] | string,
-  columnNameMap: Record<string, U>,
+  columnNameMap: Record<string, U> = {},
 ): Array<T> {
   if (typeof csv === "string") csv = csv.split(/\r?\n/);
   if (!csv || csv.length <= 1) return [];

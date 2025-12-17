@@ -40,56 +40,10 @@ type ConvertOptions = {
   columnFix?: ColumnFixOptions;
 };
 
-export function extractAndParseTable(table: AzureTable) {
-  let csv = tableToCSV(table);
-  let strCsv = csv.join("\n");
-  let rowsOffset = 0;
-
-  if (!strCsv.includes("TÍTULO DO DOCUMENTO")) return; // Relevant documents table
-  if (!csv[0]?.includes("TÍTULO DO DOCUMENTO")) {
-    while (!csv[0]?.includes("TÍTULO DO DOCUMENTO")) {
-      csv.shift();
-      strCsv = csv.join("\n");
-      rowsOffset++;
-    }
-  }
-
-  // Handle bad format on table columns
-  const desiredColumns = 4;
-  let columnFix = undefined;
-
-  if (csv[0].split(",").length !== desiredColumns) {
-    columnFix = {
-      desiredColumns,
-      skipColumns: 2,
-      joinUntil: -1,
-    };
-
-    const options = {
-      skipRows: rowsOffset,
-      columnFix,
-    };
-
-    csv = tableToCSV(table, options);
-    strCsv = csv.join("\n");
-  }
-
-  const json = csv2json(csv, {
-    ITEM: "item",
-    REVISÃO: "revision",
-    NÚMERO: "documentName",
-    NUMERO: "documentName",
-    "TÍTULO DO DOCUMENTO": "title",
-  });
-
-  return {
-    json,
-    csv: strCsv,
-    html: tableToHTML(table, { skipRows: rowsOffset, columnFix }),
-  };
-}
-
-function tableToCSV(table: AzureTable, options?: ConvertOptions): string[] {
+export function tableToCSV(
+  table: AzureTable,
+  options?: ConvertOptions,
+): string[] {
   const skipRows = options?.skipRows ?? 0;
 
   let grid = buildFlatGrid(table, skipRows);
@@ -117,7 +71,10 @@ function tableToCSV(table: AzureTable, options?: ConvertOptions): string[] {
     .filter((row) => !!row.trim());
 }
 
-function tableToHTML(table: AzureTable, options?: ConvertOptions): string {
+export function tableToHTML(
+  table: AzureTable,
+  options?: ConvertOptions,
+): string {
   const skipRows = options?.skipRows ?? 0;
 
   let grid = buildFlatGrid(table, skipRows);

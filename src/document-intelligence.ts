@@ -2,8 +2,9 @@ import {
   AzureKeyCredential,
   DocumentAnalysisClient,
 } from "@azure/ai-form-recognizer";
+import type { AzureTable } from "./handle-tables";
 
-export async function analyzeDocument(path: string, pages: string) {
+export async function analyzeDocument(path: string, pages?: string) {
   if (
     !Bun.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT ||
     !Bun.env.AZURE_DOCUMENT_INTELLIGENCE_API_KEY
@@ -35,6 +36,16 @@ export async function analyzeDocument(path: string, pages: string) {
       ),
     })),
   };
+}
+
+export async function analyzeDocumentCached(path: string, pages?: string) {
+  const jsonPath = path.replace(".pdf", ".json").replace(".PDF", ".json");
+  if (await Bun.file(jsonPath).exists()) {
+    return Bun.file(jsonPath).json() as Promise<{ tables: AzureTable[] }>;
+  }
+  const data = await analyzeDocument(path, pages);
+  await Bun.write(jsonPath, JSON.stringify(data, null, 2));
+  return data;
 }
 
 function omit<T extends Record<string, any>, K extends keyof T>(

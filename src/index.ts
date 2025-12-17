@@ -1,63 +1,96 @@
-import { extractAndParseTable, type AzureTable } from "./handle-tables";
-import { analyzeDocument } from "./document-intelligence";
+import { readdir } from "fs/promises";
+import mongoose from "mongoose";
+
+import { handleAnexoXIVCached } from "./anexo-xiv";
+import { handleLDCached } from "./lds";
+import { csv2json } from "./csv2json";
+
+const s3 = new Bun.S3Client({ region: "us-east-1", bucket: "heftos-ged" });
+
+mongoose
+  .connect(process.env.MONGO_URI!, { dbName: "heftos-ged" })
+  .then(main)
+  .catch(console.error)
+  .finally(mongoose.disconnect);
 
 async function main() {
-  const data = await analyzeDocumentCached("./assets/ANEXO XIV.pdf", `3-28`);
-  if (!data.tables) {
-    console.error("No tables found");
-    process.exit(1);
-  }
+  const rowsPerPage = await handleAnexoXIVCached();
+  await handleDownloadMentionedLDs(rowsPerPage);
 
-  const htmlsPerPage: Record<number, string[]> = {};
+  const assets = await readdir("./assets");
+  for (const filename of assets) {
+    if (
+      !filename.startsWith("LD-") ||
+      !filename.endsWith(".pdf") ||
+      !filename.endsWith(".PDF")
+    )
+      continue;
 
-  for (const table of data.tables) {
-    const result = extractAndParseTable(table);
-    if (!result) continue;
-
-    const page = table.boundingRegions?.[0]?.pageNumber
-      ? table.boundingRegions[0].pageNumber
-      : 0;
-
-    htmlsPerPage[page] = htmlsPerPage[page] || [];
-    await writeResults(page, result);
-
-    const { html, json } = result;
-    htmlsPerPage[page].push(html);
-
-    const lds = json.filter((item) => item.documentName.startsWith("LD-"));
-    for (const item of lds) {
-      console.log(page, item.documentName);
+    const result = await handleLDCached(`./assets/${filename}`);
+    if (!result) {
+      console.error(`No tables found in ${filename}`);
+      continue;
     }
   }
-
-  await Bun.write(`./tables/index.html`, joinHTMLPageTables(htmlsPerPage));
 }
 
-main();
-
-async function analyzeDocumentCached(path: string, pages: string) {
-  const jsonPath = path.replace(".pdf", ".json");
-  if (await Bun.file(jsonPath).exists()) {
-    return Bun.file(jsonPath).json() as Promise<{ tables: AzureTable[] }>;
-  }
-  const data = await analyzeDocument(path, pages);
-  await Bun.write(jsonPath, JSON.stringify(data, null, 2));
-  return data;
-}
-
-async function writeResults(
-  page: number,
-  result: NonNullable<ReturnType<typeof extractAndParseTable>>,
+async function handleDownloadMentionedLDs(
+  rowsPerPage: Awaited<ReturnType<typeof handleAnexoXIVCached>>,
 ) {
-  const { csv, html, json } = result;
+  const documentsCollection = mongoose.connection.db!.collection<{
+    blobPath: string;
+  }>("documents");
 
-  await Bun.write(`./tables/table_${page}.html`, html);
-  await Bun.write(`./tables/table_${page}.csv`, csv);
-  await Bun.write(`./tables/table_${page}.json`, JSON.stringify(json, null, 2));
-}
+  const lds = Object.fromEntries(
+    Object.entries(rowsPerPage).map(([page, rows]) => [
+      page,
+      rows.filter((item) => item.documentName.startsWith("LD-")),
+    ]),
+  );
 
-function joinHTMLPageTables(htmlsPerPage: Record<number, string[]>) {
-  return Object.entries(htmlsPerPage)
-    .map(([page, htmls]) => `<h1>Page ${page}</h1> <br/>${htmls.join("<br/>")}`)
-    .join("<br/><br/>");
+  const assets = await readdir("./assets");
+  const existingLDs = assets.filter((asset) => asset.startsWith("LD-"));
+  const missingLDs = Object.values(lds)
+    .flat()
+    .filter((row) => !existingLDs.some((ld) => ld.includes(row.documentName)));
+
+  if (!missingLDs || missingLDs.length === 0) return;
+
+  const documents = await documentsCollection
+    .find(
+      {
+        $and: [
+          {
+            blobPath: {
+              $regex: missingLDs.map((row) => row.documentName).join("|"),
+              $options: "i",
+            },
+          },
+          { blobPath: { $regex: "\\.pdf$", $options: "i" } },
+        ],
+      },
+      { projection: { _id: 1, blobPath: 1 } },
+    )
+    .toArray();
+
+  if (!documents || documents.length === 0) {
+    console.error(`No documents found with ${missingLDs.length} missing LDs`);
+    console.error(missingLDs.map((ld) => ld.documentName).join(", "));
+    return;
+  }
+
+  for (const row of missingLDs) {
+    const document = documents.find((doc) =>
+      doc.blobPath.includes(row.documentName),
+    );
+
+    if (!document) {
+      console.error(`No document found for ${row.documentName}`);
+      continue;
+    }
+
+    console.log(`Downloading ${document.blobPath} to assets`);
+    const file = await s3.file(document.blobPath).arrayBuffer();
+    await Bun.write(`./assets/${document.blobPath.split("/").pop()}`, file);
+  }
 }
