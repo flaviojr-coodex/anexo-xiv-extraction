@@ -1,0 +1,19 @@
+{
+  "name": "anexo-xiv-extraction",
+  "module": "index.ts",
+  "scripts": {
+    "api": "bun ./tables/**/*.html",
+    "reset": "rm -rf ./tables && bun src/index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@azure/ai-form-recognizer": "^5.1.0"
+  }
+}
