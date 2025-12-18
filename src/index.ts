@@ -11,10 +11,15 @@ const ignoredLDs = new Set<string>([
   "LD-5400.00-5606-700-HJK-502=0.PDF",
   "LD-5400.00-5136-700-HJK-001=0.PDF",
   "LD-5400.00-5136-700-HJK-002=0.PDF",
+  "LD-5400.00-5136-700-HJK-003=0.PDF",
   "LD-5400.00-5135-700-HJK-002=0.PDF",
   "LD-5400.00-5135-700-HJK-004=0.PDF",
+  "LD-5400.00-6825-700-HJK-002=0.PDF",
+  "LD-5400.00-6825-313-VCE-001=C.PDF", // CANCELADO
   "LD-5400.00-5606-642-LDW-001=C_CONSOLIDADO.pdf",
-  //
+  "LD-5400.00-5950-811-EJL-001=A_CONSOLIDADO.PDF",
+  // Unstructured table in document, no need to reprocess since it only refers to itself
+  "LD-5400.00-6825-833-KSV-001=0_CONSOLIDADO.PDF",
 ]);
 
 const gedMissingLDs = new Set<string>();

@@ -20,14 +20,18 @@ const COLUMN_NAMES = {
   "Nº DO DOCUMENTO": "documentName",
   "Nº N-1710 1710": "documentName",
   "Número DIGIMAT": "documentName",
+  "NºDO DOCUMENTO": "documentName",
   "CODIGO N-1710": "documentName",
   "CÓDIGO N-1710": "documentName",
   "Nº PETROBRAS": "documentName",
+  "Nº DOCUMENTO": "documentName",
   "Nr. COMPERJ": "documentName",
   "O DOCUMENTO": "documentName",
+  "Nº Cliente": "documentName",
   "Número CBM": "documentName",
   "Nº N-1710": "documentName",
   "Nr.N1710": "documentName",
+  "Nº 1710": "documentName",
   Número: "documentName",
   CÓDIGO: "documentName",
   NÚMERO: "documentName",
@@ -48,17 +52,16 @@ export async function handleLDCached(path: string) {
     return;
   }
 
+  // FIX
+  data.tables = fixTableByName(path, data.tables);
+
   const htmlsPerPage: Record<number, string[]> = {};
   const rowsPerPage: Record<
     number,
     NonNullable<ReturnType<typeof extractAndParseTable>>["json"]
   > = {};
 
-  const folder = path
-    .split("/")
-    .pop()!
-    .replaceAll(".pdf", "")
-    .replaceAll(".PDF", "");
+  const folder = path.split("/").pop()!;
 
   for (const table of data.tables) {
     const result = extractAndParseTable(table, folder);
@@ -116,6 +119,10 @@ function extractAndParseTable(table: AzureTable, folder: string) {
     }
   }
 
+  if (folder.includes("LD-5400.00-5606-744-AFK-503=A")) {
+    console.log(strCsv);
+  }
+
   const json = csv2json(csv, COLUMN_NAMES);
 
   if (
@@ -166,4 +173,58 @@ function normalizeLower(str: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+}
+
+function fixTableByName(name: string, tables: AzureTable[]) {
+  if (name.includes("LD-5400.00-5606-744-AFK-503=A")) {
+    if (!tables[4] || !tables[4].cells[4]) {
+      console.warn(
+        "[LD-5400.00-5606-744-AFK-503=A] Could not find table 4 to fix extraction",
+      );
+      return tables;
+    }
+
+    const newTables = [...tables];
+
+    const corrrectSecondCell = newTables[4]!.cells[4]!;
+    corrrectSecondCell.columnSpan = 16;
+
+    const correctHeaderCells = [
+      "", // blank - OCR error
+      "Nº",
+      "EAP",
+      "Nº DO DOCUMENTO",
+      "TITULO DO DOCUMENTO",
+      "REV.",
+      "QT. FOLHA",
+      "Nº DOCUMENTO FORNECIMENTO",
+      "TAG",
+      "", // blank - OCR error
+      "DATA PREVISTA",
+      "GRDT TRANSMITIDA",
+      "DATA GRDT TRANSMITIDA",
+      "STATUS",
+      "V ou I",
+      "", // blank - OCR error
+    ].map((content, i) => ({
+      kind: "columnHeader",
+      columnIndex: i,
+      columnSpan: 1,
+      rowIndex: 2,
+      rowSpan: 1,
+      content,
+    })) as AzureTable["cells"];
+
+    newTables[4]!.cells = [
+      ...correctHeaderCells,
+      corrrectSecondCell,
+      ...tables[4].cells
+        .slice(6)
+        .map((cell) => ({ ...cell, rowIndex: cell.rowIndex + 1 })),
+    ];
+
+    return newTables;
+  }
+
+  return tables;
 }

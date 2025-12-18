@@ -1,6 +1,6 @@
-import { createAzure } from "@ai-sdk/azure";
-import { generateText, type ImagePart } from "ai";
 import { pdfToPng } from "pdf-to-png-converter";
+import { createAzure } from "@ai-sdk/azure";
+import { generateText } from "ai";
 
 const azure = createAzure({
   apiKey: process.env.AZURE_API_KEY!,
