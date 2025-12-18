@@ -2,7 +2,6 @@ import type {
   AnalyzeResult,
   AnalyzedDocument,
 } from "@azure/ai-form-recognizer";
-import { csv2json } from "./csv2json";
 
 type RawAzureTable = Required<
   AnalyzeResult<AnalyzedDocument>
@@ -71,7 +70,7 @@ export function tableToCSV(
     )
     .filter((row) => !!row.trim());
 
-  return csv.filter((x) => x.split(",").length === csv[0]!.split(",").length);
+  return csv;
 }
 
 export function tableToHTML(
@@ -144,9 +143,21 @@ function getUniqueValues<T>(array: T[]): T[] {
   return Array.from(new Set(array));
 }
 
-function buildFlatGrid(table: AzureTable, skipRows: number): GridCell[][] {
-  const rows = table.rowCount - skipRows;
+export function buildFlatGrid(
+  table: AzureTable,
+  skipRows: number,
+): GridCell[][] {
   const cols = table.columnCount;
+
+  let maxRow = -1;
+
+  for (const cell of table.cells) {
+    const start = cell.rowIndex;
+    const span = cell.rowSpan ?? 1;
+    maxRow = Math.max(maxRow, start + span - 1);
+  }
+
+  const rows = Math.max(0, maxRow + 1 - skipRows);
 
   const grid: GridCell[][] = Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => ({ content: "", kind: undefined })),

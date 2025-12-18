@@ -52,7 +52,6 @@ export async function handleLDCached(path: string) {
     return;
   }
 
-  // FIX
   data.tables = fixTableByName(path, data.tables);
 
   const htmlsPerPage: Record<number, string[]> = {};
@@ -117,10 +116,6 @@ function extractAndParseTable(table: AzureTable, folder: string) {
       if (iterationCount++ > MAX_ITERATIONS)
         throw new Error("Maximum iterations reached");
     }
-  }
-
-  if (folder.includes("LD-5400.00-5606-744-AFK-503=A")) {
-    console.log(strCsv);
   }
 
   const json = csv2json(csv, COLUMN_NAMES);
