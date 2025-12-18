@@ -2,6 +2,45 @@ import { csv2json } from "./csv2json";
 import { analyzeDocumentCached } from "./document-intelligence";
 import { tableToCSV, tableToHTML, type AzureTable } from "./handle-tables";
 
+const COLUMN_NAMES = {
+  "NUMERO DO DOCUMENTO PETROBRAS": "documentName",
+  "Nº PETROBRAS ( N-1710 )": "documentName",
+  "Nº PETROBRÁS ( N-1710 )": "documentName",
+  "Nº PETROBRAS (N-1710 )": "documentName",
+  "Numero do Documento": "documentName",
+  "NUMERO DO DOCUMENTO": "documentName",
+  "NÚMERO DO DOCUMENTO": "documentName",
+  ". Nº DO DOCUMENTO": "documentName",
+  "NÚM. DO DOCUMENTO": "documentName",
+  "NUMERO DOCUMENTO": "documentName",
+  "NÚMERO DOCUMENTO": "documentName",
+  "DOCUMENTO N-1710": "documentName",
+  "NÚMERO PETROBRAS": "documentName",
+  "IN° DO DOCUMENTO": "documentName",
+  "Nº DO DOCUMENTO": "documentName",
+  "Nº N-1710 1710": "documentName",
+  "Número DIGIMAT": "documentName",
+  "CODIGO N-1710": "documentName",
+  "CÓDIGO N-1710": "documentName",
+  "Nº PETROBRAS": "documentName",
+  "Nr. COMPERJ": "documentName",
+  "O DOCUMENTO": "documentName",
+  "Número CBM": "documentName",
+  "Nº N-1710": "documentName",
+  "Nr.N1710": "documentName",
+  Número: "documentName",
+  CÓDIGO: "documentName",
+  NÚMERO: "documentName",
+  NUMERO: "documentName",
+};
+
+const matches = [
+  ...Object.keys(COLUMN_NAMES).filter((key) => key !== "O DOCUMENTO"),
+  ',"O DOCUMENTO",',
+];
+
+const desiredColumnNames = Array.from(new Set(Object.values(COLUMN_NAMES)));
+
 export async function handleLDCached(path: string) {
   const data = await analyzeDocumentCached(path);
   if (!data.tables) {
@@ -15,8 +54,14 @@ export async function handleLDCached(path: string) {
     NonNullable<ReturnType<typeof extractAndParseTable>>["json"]
   > = {};
 
+  const folder = path
+    .split("/")
+    .pop()!
+    .replaceAll(".pdf", "")
+    .replaceAll(".PDF", "");
+
   for (const table of data.tables) {
-    const result = extractAndParseTable(table);
+    const result = extractAndParseTable(table, folder);
     if (!result) continue;
 
     const page = table.boundingRegions?.[0]?.pageNumber
@@ -24,87 +69,85 @@ export async function handleLDCached(path: string) {
       : 0;
 
     htmlsPerPage[page] = htmlsPerPage[page] || [];
-    await writeResults(path, page, result);
+    await writeResults(folder, page, result);
 
     const { html, json } = result;
+
     htmlsPerPage[page].push(html);
     rowsPerPage[page] = json;
   }
 
   if (!Object.keys(htmlsPerPage).length) {
-    console.error("No tables found in" + path);
+    console.error(`[${folder}] No tables found on document`);
     return;
   }
 
   await Bun.write(
-    `./tables/${path.split("/").pop()}/index.html`,
+    `./tables/${folder}/index.html`,
     joinHTMLPageTables(htmlsPerPage),
   );
 
   return rowsPerPage;
 }
 
-function extractAndParseTable(table: AzureTable) {
+function hasMatch(matches: string[], search: string) {
+  return matches.some((match) =>
+    normalizeLower(search).includes(normalizeLower(match)),
+  );
+}
+
+function extractAndParseTable(table: AzureTable, folder: string) {
   let csv = tableToCSV(table);
   let strCsv = csv.join("\n");
   let rowsOffset = 0;
 
-  const match = "titulo do documento";
-  if (!normalizeLower(strCsv).includes(match)) return; // Relevant documents table
-  if (csv[0] && !normalizeLower(csv[0]).includes(match)) {
-    while (!normalizeLower(csv[0]).includes(match)) {
+  if (!hasMatch(matches, strCsv)) return; // Relevant documents table
+  if (csv[0] && !hasMatch(matches, csv[0])) {
+    const MAX_ITERATIONS = 200;
+    let iterationCount = 0;
+
+    while (!hasMatch(matches, csv[0])) {
       csv.shift();
       strCsv = csv.join("\n");
       rowsOffset++;
+
+      if (iterationCount++ > MAX_ITERATIONS)
+        throw new Error("Maximum iterations reached");
     }
   }
 
-  // Handle bad format on table columns
-  const desiredColumns = 4;
-  let columnFix = undefined;
+  const json = csv2json(csv, COLUMN_NAMES);
 
-  // if (csv[0].split(",").length !== desiredColumns) {
-  //   columnFix = {
-  //     desiredColumns,
-  //     skipColumns: 2,
-  //     joinUntil: -1,
-  //   };
-
-  //   const options = {
-  //     skipRows: rowsOffset,
-  //     columnFix,
-  //   };
-
-  //   csv = tableToCSV(table, options);
-  //   strCsv = csv.join("\n");
-  // }
-
-  const json = csv2json(csv, {
-    "Nº DO DOCUMENTO": "documentName",
-    NÚMERO: "documentName",
-    NUMERO: "documentName",
-  });
+  if (
+    !json.every((row) => desiredColumnNames.every((column) => column in row))
+  ) {
+    // console.log({ json });
+    // const page = table.boundingRegions?.[0]?.pageNumber || 0;
+    // console.error(
+    //   `[${folder}] Cannot find mapped columns ${desiredColumnNames} | PAGE ${page}`,
+    // );
+    return;
+  }
 
   return {
     json,
     csv: strCsv,
-    html: tableToHTML(table, { skipRows: rowsOffset, columnFix }),
+    html: tableToHTML(table, { skipRows: rowsOffset }),
   };
 }
 
 async function writeResults(
-  path: string,
+  folder: string,
   page: number,
   result: NonNullable<ReturnType<typeof extractAndParseTable>>,
 ) {
   const { csv, html, json } = result;
-  const parsedPath = path.split("/").pop();
 
   try {
-    await Bun.write(`./tables/${parsedPath}/table_${page}.html`, html);
-    await Bun.write(`./tables/${parsedPath}/table_${page}.csv`, csv);
+    await Bun.write(`./tables/${folder}/table_${page}.html`, html);
+    await Bun.write(`./tables/${folder}/table_${page}.csv`, csv);
     await Bun.write(
-      `./tables/${parsedPath}/table_${page}.json`,
+      `./tables/${folder}/table_${page}.json`,
       JSON.stringify(json, null, 2),
     );
   } catch (error) {

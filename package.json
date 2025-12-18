@@ -2,6 +2,7 @@
   "name": "anexo-xiv-extraction",
   "module": "index.ts",
   "scripts": {
+    "ai": "bun ./ai/index.ts",
     "api": "bun ./tables/**/*.html",
     "reset": "rm -rf ./tables && bun src/index.ts"
   },
@@ -14,7 +15,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@ai-sdk/azure": "^2.0.57",
     "@azure/ai-form-recognizer": "^5.1.0",
-    "mongoose": "^9.0.1"
+    "ai": "^5.0.81",
+    "mongoose": "^9.0.1",
+    "pdf-to-png-converter": "^3.11.0"
   }
 }

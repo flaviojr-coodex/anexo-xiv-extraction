@@ -52,7 +52,7 @@ export function tableToCSV(
     grid = normalizeColumns(grid, options.columnFix);
   }
 
-  return grid
+  const csv = grid
     .map((row) =>
       row
         .map(({ content }) => {
@@ -60,6 +60,7 @@ export function tableToCSV(
             .replaceAll(":unselected:", "")
             .replaceAll(":selected:", "")
             .replace(/"/g, '""')
+            .replace("\n", "")
             .trim();
 
           if (cell === "") return "";
@@ -69,6 +70,8 @@ export function tableToCSV(
         .trim(),
     )
     .filter((row) => !!row.trim());
+
+  return csv.filter((x) => x.split(",").length === csv[0]!.split(",").length);
 }
 
 export function tableToHTML(
