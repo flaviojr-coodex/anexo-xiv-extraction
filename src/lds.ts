@@ -146,7 +146,7 @@ async function writeResults(
   const { csv, html, json } = result;
 
   try {
-    await Bun.write(`./tables/${folder}/table_${page}.html`, html);
+    // await Bun.write(`./tables/${folder}/table_${page}.html`, html);
     await Bun.write(`./tables/${folder}/table_${page}.csv`, csv);
     await Bun.write(
       `./tables/${folder}/table_${page}.json`,
