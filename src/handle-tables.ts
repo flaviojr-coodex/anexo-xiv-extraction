@@ -7,7 +7,7 @@ type RawAzureTable = Required<
   AnalyzeResult<AnalyzedDocument>
 >["tables"][number];
 
-type AzureCell = {
+export type AzureCell = {
   kind?: string;
   rowIndex: number;
   columnIndex: number;

@@ -72,7 +72,7 @@ function extractAndParseAnexoXIVTable(table: AzureTable) {
 
   const json = csv2json(csv, {
     // ITEM: "item",
-    // REVISÃO: "revision",
+    REVISÃO: "revision",
     NÚMERO: "documentName",
     NUMERO: "documentName",
     // "TÍTULO DO DOCUMENTO": "title",

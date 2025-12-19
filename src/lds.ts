@@ -1,8 +1,10 @@
-import { csv2json } from "./csv2json";
-import { analyzeDocumentCached } from "./document-intelligence";
 import { tableToCSV, tableToHTML, type AzureTable } from "./handle-tables";
+import { analyzeDocumentCached } from "./document-intelligence";
+import { csv2json } from "./csv2json";
+import { table } from "console";
+import { fixMergedRevisionColumns } from "./fix-revision";
 
-const COLUMN_NAMES = {
+const DOCUMENT_NAME_COLUMN_MAP = {
   "NUMERO DO DOCUMENTO PETROBRAS": "documentName",
   "Nº PETROBRAS ( N-1710 )": "documentName",
   "Nº PETROBRÁS ( N-1710 )": "documentName",
@@ -38,9 +40,35 @@ const COLUMN_NAMES = {
   NUMERO: "documentName",
 };
 
+const REVISION_COLUMN_MAP = {
+  "Numero da Revisão": "revision",
+  REVISAO: "revision",
+  REVISÃO: "revision",
+  "BEY.": "revision",
+  "BEV.": "revision",
+  "Rev.": "revision",
+  "FEV.": "revision",
+  "REV.": "revision",
+  Bev: "revision",
+  BEV: "revision",
+  REY: "revision",
+  Rev: "revision",
+  REV: "revision",
+  Rey: "revision",
+  Re: "revision",
+};
+
+const COLUMN_NAMES = { ...DOCUMENT_NAME_COLUMN_MAP, ...REVISION_COLUMN_MAP };
+
+const excludedColumns = ["O DOCUMENTO"];
+
 const matches = [
-  ...Object.keys(COLUMN_NAMES).filter((key) => key !== "O DOCUMENTO"),
-  ',"O DOCUMENTO",',
+  ...Object.keys(DOCUMENT_NAME_COLUMN_MAP).filter((key) =>
+    excludedColumns.includes(key),
+  ),
+  ...[...Object.keys(REVISION_COLUMN_MAP), ...excludedColumns].map(
+    (c) => `,"${c}",`,
+  ),
 ];
 
 const desiredColumnNames = Array.from(new Set(Object.values(COLUMN_NAMES)));
@@ -123,11 +151,18 @@ function extractAndParseTable(table: AzureTable, folder: string) {
   if (
     !json.every((row) => desiredColumnNames.every((column) => column in row))
   ) {
-    // console.log({ json });
-    // const page = table.boundingRegions?.[0]?.pageNumber || 0;
-    // console.error(
-    //   `[${folder}] Cannot find mapped columns ${desiredColumnNames} | PAGE ${page}`,
-    // );
+    const missingJsonFields = Array.from(
+      new Set(Object.values(COLUMN_NAMES).filter((key) => !(key in json[0]!))),
+    );
+
+    if (missingJsonFields.length === 1 && missingJsonFields[0] === "revision") {
+      // const page = table.boundingRegions?.[0]?.pageNumber || 0;
+      // console.error(
+      //   `[${folder}] Cannot find mapped columns ${missingJsonFields} | PAGE ${page}`,
+      // );
+      // console.log(JSON.stringify(json.slice(0, 3), null, 2));
+    }
+
     return;
   }
 
@@ -219,6 +254,83 @@ function fixTableByName(name: string, tables: AzureTable[]) {
     ];
 
     return newTables;
+  }
+
+  const revisionMergedFixes: Record<
+    string,
+    { revisionIndex: number; revisionContentIndex: 0 | 1; tableIndex: number }
+  > = {
+    "LD-5400.00-5604-814-FRB-001=B": {
+      revisionContentIndex: 0,
+      revisionIndex: 3,
+      tableIndex: 4,
+    },
+    "LD-5400.00-0000-940-ORG-001=A": {
+      revisionContentIndex: 1,
+      revisionIndex: 16,
+      tableIndex: 7,
+    },
+  };
+
+  if (Object.keys(revisionMergedFixes).some((k) => name.includes(k))) {
+    const newTables = fixMergedRevisionColumns({
+      name,
+      tables,
+      revisionMergedFixes,
+    });
+
+    return newTables;
+
+    // const key = Object.keys(revisionMergedFixes).find((k) => name.includes(k));
+    // const { revisionIndex, revisionContentIndex, tableIndex } =
+    //   revisionMergedFixes[key!]!;
+
+    // if (!tables[tableIndex]) {
+    //   console.warn(
+    //     "[LD-5400.00-5604-814-FRB-001=B] Could not find table 4 to fix extraction",
+    //   );
+    //   return tables;
+    // }
+
+    // const newTables = [...tables];
+
+    // for (
+    //   let i = revisionIndex, j = 0;
+    //   i < tables[tableIndex]!.cells.length;
+    //   i += tables[tableIndex]!.columnCount, j++
+    // ) {
+    //   const cell = tables[tableIndex]!.cells[i];
+    //   const revisionColumn = cell?.content
+    //     ?.split(" ", revisionContentIndex === 0 ? 1 : undefined)
+    //     .at(revisionContentIndex);
+
+    //   const rest =
+    //     revisionContentIndex === 0
+    //       ? cell?.content?.slice(revisionColumn?.length || 0).trim()
+    //       : cell?.content?.slice(0, -(revisionColumn?.length || 0)).trim();
+
+    //   console.log({ cell, rest, revisionColumn });
+
+    //   cell!.content = revisionColumn;
+    //   newTables[tableIndex]!.cells.splice(i + 1, 0, {
+    //     columnIndex: cell!.columnIndex + 1,
+    //     rowIndex: cell!.rowIndex,
+    //     content: rest,
+    //   });
+
+    //   newTables[tableIndex]!.columnCount++;
+    // }
+
+    // const columnsCount: Record<number, number> = {};
+    // for (let i = 0; i < newTables[tableIndex]!.cells.length; i++) {
+    //   const cell = newTables[tableIndex]!.cells[i]!;
+    //   columnsCount[cell.rowIndex] = columnsCount[cell.rowIndex] || 0;
+    //   newTables[tableIndex]!.cells[i]!.columnIndex =
+    //     columnsCount[cell.rowIndex]!;
+    //   columnsCount[cell.rowIndex]!++;
+    // }
+
+    // return newTables;
   }
 
   return tables;
