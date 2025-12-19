@@ -1,7 +1,7 @@
 import type { AzureCell, AzureTable } from "./handle-tables";
 
 type RevisionMergedFix = {
-  tableIndex: number;
+  tableIndex: number[];
   revisionIndex: number;
   revisionContentIndex: 0 | 1;
 };
@@ -43,127 +43,120 @@ export function fixMergedRevisionColumns(params: {
   const fix = revisionMergedFixes[key];
   if (!fix) return tables;
 
-  const { revisionIndex, revisionContentIndex, tableIndex } = fix;
+  const { revisionIndex, revisionContentIndex, tableIndex: tableIndices } = fix;
 
-  const table = tables[tableIndex];
-  if (!table) {
-    console.warn(
-      `[${key}] Could not find table ${tableIndex} to fix extraction`,
-    );
-    return tables;
-  }
+  let newTables = [...tables];
 
-  if (
-    !Array.isArray(table.cells) ||
-    revisionIndex < 0 ||
-    revisionIndex >= table.cells.length
-  ) {
-    console.warn(
-      `[${key}] Invalid revisionIndex (${revisionIndex}) for table ${tableIndex}`,
-    );
-    return tables;
-  }
+  for (const tIndex of tableIndices) {
+    const table = newTables[tIndex];
+    if (!table) {
+      console.warn(`[${key}] Could not find table ${tIndex} to fix extraction`);
+      continue;
+    }
 
-  const newTables = tables.map((t, idx) => {
-    if (idx !== tableIndex) return t;
-    return {
-      ...t,
-      cells: t.cells.map((c) => ({ ...c })),
+    if (
+      !Array.isArray(table.cells) ||
+      revisionIndex < 0 ||
+      revisionIndex >= table.cells.length
+    ) {
+      console.warn(
+        `[${key}] Invalid revisionIndex (${revisionIndex}) for table ${tIndex}`,
+      );
+      continue;
+    }
+
+    const workingTable: AzureTable = {
+      ...table,
+      cells: table.cells.map((c) => ({ ...c })),
     };
-  });
 
-  const newTable = newTables[tableIndex]!;
-  const oldColumnCount = newTable.columnCount;
+    const oldColumnCount = workingTable.columnCount;
 
-  const revisionCellProbe = newTable.cells[revisionIndex];
-  if (!revisionCellProbe) return newTables;
+    const revisionCellProbe = workingTable.cells[revisionIndex];
+    if (!revisionCellProbe) {
+      newTables[tIndex] = workingTable;
+      continue;
+    }
 
-  const revisionCol = revisionCellProbe.columnIndex;
-  const insertCol = revisionCol + 1;
+    const revisionCol = revisionCellProbe.columnIndex;
+    const insertCol = revisionCol + 1;
 
-  const rows = new Map<number, AzureCell[]>();
-  for (const cell of newTable.cells) {
-    const list = rows.get(cell.rowIndex) ?? [];
-    list.push(cell);
-    rows.set(cell.rowIndex, list);
+    const rows = new Map<number, AzureCell[]>();
+    for (const cell of workingTable.cells) {
+      const list = rows.get(cell.rowIndex) ?? [];
+      list.push(cell);
+      rows.set(cell.rowIndex, list);
+    }
+
+    const rowIndices = Array.from(rows.keys()).sort((a, b) => a - b);
+
+    for (const r of rowIndices) {
+      const rowCells = rows.get(r)!;
+
+      const revCell = rowCells.find((c) => c.columnIndex === revisionCol);
+
+      let restContent = "";
+      if (revCell?.content) {
+        const split = splitRevisionAndRest(
+          revCell.content,
+          revisionContentIndex,
+        );
+        if (split) {
+          revCell.content = split.revision;
+          restContent = split.rest;
+        }
+      }
+
+      for (const c of rowCells) {
+        if (c.columnIndex > revisionCol) c.columnIndex += 1;
+      }
+
+      rowCells.push({
+        rowIndex: r,
+        columnIndex: insertCol,
+        content: restContent,
+      });
+
+      const newColumnCount = oldColumnCount + 1;
+
+      const byCol = new Map<number, AzureCell>();
+      for (const c of rowCells) {
+        const existing = byCol.get(c.columnIndex);
+        if (!existing) {
+          byCol.set(c.columnIndex, c);
+        } else {
+          const existingText = (existing.content ?? "").toString().trim();
+          const newText = (c.content ?? "").toString().trim();
+          if (!existingText && newText) byCol.set(c.columnIndex, c);
+        }
+      }
+
+      for (let col = 0; col < newColumnCount; col++) {
+        if (!byCol.has(col)) {
+          byCol.set(col, {
+            rowIndex: r,
+            columnIndex: col,
+            content: "",
+          });
+        }
+      }
+
+      rowCells.length = 0;
+      rowCells.push(...Array.from(byCol.values()));
+      rowCells.sort((a, b) => a.columnIndex - b.columnIndex);
+    }
+
+    workingTable.columnCount = oldColumnCount + 1;
+
+    const rebuilt: AzureCell[] = [];
+    for (const r of rowIndices) {
+      rebuilt.push(...rows.get(r)!);
+    }
+
+    workingTable.cells = rebuilt;
+
+    newTables[tIndex] = workingTable;
   }
-
-  const rowIndices = Array.from(rows.keys()).sort((a, b) => a - b);
-
-  for (const r of rowIndices) {
-    const rowCells = rows.get(r)!;
-
-    const revCell = rowCells.find((c) => c.columnIndex === revisionCol);
-
-    let restContent = "";
-    if (revCell?.content) {
-      const split = splitRevisionAndRest(revCell.content, revisionContentIndex);
-      if (split) {
-        revCell.content = split.revision;
-        restContent = split.rest;
-      }
-    }
-
-    for (const c of rowCells) {
-      if (c.columnIndex > revisionCol) c.columnIndex += 1;
-    }
-
-    rowCells.push({
-      rowIndex: r,
-      columnIndex: insertCol,
-      content: restContent,
-    });
-
-    const newColumnCount = oldColumnCount + 1;
-
-    const byCol = new Map<number, AzureCell>();
-    for (const c of rowCells) {
-      const existing = byCol.get(c.columnIndex);
-      if (!existing) {
-        byCol.set(c.columnIndex, c);
-      } else {
-        const existingText = (existing.content ?? "").toString().trim();
-        const newText = (c.content ?? "").toString().trim();
-        if (!existingText && newText) byCol.set(c.columnIndex, c);
-      }
-    }
-
-    for (let col = 0; col < newColumnCount; col++) {
-      if (!byCol.has(col)) {
-        rowCells.push({
-          rowIndex: r,
-          columnIndex: col,
-          content: "",
-        });
-      }
-    }
-
-    const finalByCol = new Map<number, AzureCell>();
-    for (const c of rowCells) {
-      const existing = finalByCol.get(c.columnIndex);
-      if (!existing) finalByCol.set(c.columnIndex, c);
-      else {
-        const existingText = (existing.content ?? "").toString().trim();
-        const newText = (c.content ?? "").toString().trim();
-        if (!existingText && newText) finalByCol.set(c.columnIndex, c);
-      }
-    }
-
-    rowCells.length = 0;
-    rowCells.push(...Array.from(finalByCol.values()));
-
-    rowCells.sort((a, b) => a.columnIndex - b.columnIndex);
-  }
-
-  newTable.columnCount = oldColumnCount + 1;
-
-  const rebuilt: AzureCell[] = [];
-  for (const r of rowIndices) {
-    const rowCells = rows.get(r)!;
-    rowCells.sort((a, b) => a.columnIndex - b.columnIndex);
-    rebuilt.push(...rowCells);
-  }
-  newTable.cells = rebuilt;
 
   return newTables;
 }

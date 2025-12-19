@@ -1,8 +1,7 @@
 import { tableToCSV, tableToHTML, type AzureTable } from "./handle-tables";
 import { analyzeDocumentCached } from "./document-intelligence";
-import { csv2json } from "./csv2json";
-import { table } from "console";
 import { fixMergedRevisionColumns } from "./fix-revision";
+import { csv2json } from "./csv2json";
 
 const DOCUMENT_NAME_COLUMN_MAP = {
   "NUMERO DO DOCUMENTO PETROBRAS": "documentName",
@@ -42,6 +41,8 @@ const DOCUMENT_NAME_COLUMN_MAP = {
 
 const REVISION_COLUMN_MAP = {
   "Numero da Revisão": "revision",
+  "REV. (ATUAL)": "revision",
+  "REV (ATUAL)": "revision",
   REVISAO: "revision",
   REVISÃO: "revision",
   "BEY.": "revision",
@@ -63,12 +64,14 @@ const COLUMN_NAMES = { ...DOCUMENT_NAME_COLUMN_MAP, ...REVISION_COLUMN_MAP };
 const excludedColumns = ["O DOCUMENTO"];
 
 const matches = [
-  ...Object.keys(DOCUMENT_NAME_COLUMN_MAP).filter((key) =>
-    excludedColumns.includes(key),
+  ...Object.keys(DOCUMENT_NAME_COLUMN_MAP).filter(
+    (key) => !excludedColumns.includes(key),
   ),
-  ...[...Object.keys(REVISION_COLUMN_MAP), ...excludedColumns].map(
-    (c) => `,"${c}",`,
-  ),
+  ...[...Object.keys(REVISION_COLUMN_MAP), ...excludedColumns].flatMap((c) => [
+    `"${c}",`,
+    `,"${c}",`,
+    `,"${c}"`,
+  ]),
 ];
 
 const desiredColumnNames = Array.from(new Set(Object.values(COLUMN_NAMES)));
@@ -147,6 +150,8 @@ function extractAndParseTable(table: AzureTable, folder: string) {
   }
 
   const json = csv2json(csv, COLUMN_NAMES);
+  if (folder.includes("LD-5400.00-5606-940-PHN-004=0"))
+    console.log({ csv, json });
 
   if (
     !json.every((row) => desiredColumnNames.every((column) => column in row))
@@ -258,79 +263,57 @@ function fixTableByName(name: string, tables: AzureTable[]) {
 
   const revisionMergedFixes: Record<
     string,
-    { revisionIndex: number; revisionContentIndex: 0 | 1; tableIndex: number }
+    { revisionIndex: number; revisionContentIndex: 0 | 1; tableIndex: number[] }
   > = {
     "LD-5400.00-5604-814-FRB-001=B": {
       revisionContentIndex: 0,
       revisionIndex: 3,
-      tableIndex: 4,
+      tableIndex: [4],
     },
     "LD-5400.00-0000-940-ORG-001=A": {
       revisionContentIndex: 1,
       revisionIndex: 16,
-      tableIndex: 7,
+      tableIndex: [7],
+    },
+    "LD-5400.00-5604-831-FRB-001=H": {
+      revisionContentIndex: 0,
+      revisionIndex: 3,
+      tableIndex: [6],
+    },
+    "LD-5400.00-5147-726-ABF-502=A": {
+      revisionContentIndex: 0,
+      revisionIndex: 4,
+      tableIndex: [4],
+    },
+    "LD-5400.00-5604-852-FRB-001=D": {
+      revisionContentIndex: 0,
+      revisionIndex: 3,
+      tableIndex: [5],
+    },
+    "LD-5400.00-0000-940-PHN-005=0": {
+      revisionContentIndex: 0,
+      revisionIndex: 2,
+      tableIndex: [6],
+    },
+    "LD-5400.00-5131-831-FRB-002=F.PDF": {
+      revisionContentIndex: 0,
+      revisionIndex: 3,
+      tableIndex: [5],
+    },
+    "LD-5400.00-5606-175-HEH-501=0_CONSOLIDADO": {
+      revisionContentIndex: 0,
+      revisionIndex: 4,
+      tableIndex: [3, 5, 9],
+    },
+    "LD-5400.00-5131-732-RSQ-003=D": {
+      revisionContentIndex: 0,
+      revisionIndex: 9,
+      tableIndex: [6],
     },
   };
 
   if (Object.keys(revisionMergedFixes).some((k) => name.includes(k))) {
-    const newTables = fixMergedRevisionColumns({
-      name,
-      tables,
-      revisionMergedFixes,
-    });
-
-    return newTables;
-
-    // const key = Object.keys(revisionMergedFixes).find((k) => name.includes(k));
-    // const { revisionIndex, revisionContentIndex, tableIndex } =
-    //   revisionMergedFixes[key!]!;
-
-    // if (!tables[tableIndex]) {
-    //   console.warn(
-    //     "[LD-5400.00-5604-814-FRB-001=B] Could not find table 4 to fix extraction",
-    //   );
-    //   return tables;
-    // }
-
-    // const newTables = [...tables];
-
-    // for (
-    //   let i = revisionIndex, j = 0;
-    //   i < tables[tableIndex]!.cells.length;
-    //   i += tables[tableIndex]!.columnCount, j++
-    // ) {
-    //   const cell = tables[tableIndex]!.cells[i];
-    //   const revisionColumn = cell?.content
-    //     ?.split(" ", revisionContentIndex === 0 ? 1 : undefined)
-    //     .at(revisionContentIndex);
-
-    //   const rest =
-    //     revisionContentIndex === 0
-    //       ? cell?.content?.slice(revisionColumn?.length || 0).trim()
-    //       : cell?.content?.slice(0, -(revisionColumn?.length || 0)).trim();
-
-    //   console.log({ cell, rest, revisionColumn });
-
-    //   cell!.content = revisionColumn;
-    //   newTables[tableIndex]!.cells.splice(i + 1, 0, {
-    //     columnIndex: cell!.columnIndex + 1,
-    //     rowIndex: cell!.rowIndex,
-    //     content: rest,
-    //   });
-
-    //   newTables[tableIndex]!.columnCount++;
-    // }
-
-    // const columnsCount: Record<number, number> = {};
-    // for (let i = 0; i < newTables[tableIndex]!.cells.length; i++) {
-    //   const cell = newTables[tableIndex]!.cells[i]!;
-    //   columnsCount[cell.rowIndex] = columnsCount[cell.rowIndex] || 0;
-    //   newTables[tableIndex]!.cells[i]!.columnIndex =
-    //     columnsCount[cell.rowIndex]!;
-    //   columnsCount[cell.rowIndex]!++;
-    // }
-
-    // return newTables;
+    return fixMergedRevisionColumns({ name, tables, revisionMergedFixes });
   }
 
   return tables;
