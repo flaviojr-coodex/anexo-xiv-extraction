@@ -43,6 +43,7 @@ const REVISION_COLUMN_MAP = {
   "Numero da Revisão": "revision",
   "REV. (ATUAL)": "revision",
   "REV (ATUAL)": "revision",
+  "REV TATE": "revision",
   REVISAO: "revision",
   REVISÃO: "revision",
   "BEY.": "revision",
@@ -150,9 +151,6 @@ function extractAndParseTable(table: AzureTable, folder: string) {
   }
 
   const json = csv2json(csv, COLUMN_NAMES);
-  if (folder.includes("LD-5400.00-5606-940-PHN-004=0"))
-    console.log({ csv, json });
-
   if (
     !json.every((row) => desiredColumnNames.every((column) => column in row))
   ) {
@@ -210,7 +208,7 @@ function normalizeLower(str: string) {
     .toLowerCase();
 }
 
-function fixTableByName(name: string, tables: AzureTable[]) {
+function fixTableByName(name: string, tables: AzureTable[]): AzureTable[] {
   if (name.includes("LD-5400.00-5606-744-AFK-503=A")) {
     if (!tables[4] || !tables[4].cells[4]) {
       console.warn(
@@ -257,6 +255,136 @@ function fixTableByName(name: string, tables: AzureTable[]) {
         .slice(6)
         .map((cell) => ({ ...cell, rowIndex: cell.rowIndex + 1 })),
     ];
+
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-5131-811-WIC-002=D")) {
+    const newTables = [...tables];
+    newTables[5]!.cells[3]!.content = "REV.";
+    newTables.splice(2, 1);
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-5606-940-VWI-501=N")) {
+    const newTables = [...tables];
+    newTables[5]!.cells[6]!.content = "REV.";
+    newTables.splice(2, 1);
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-5151-940-VWI-501=L")) {
+    const newTables = [...tables];
+    newTables[5]!.cells[7]!.content = "REV.";
+    newTables.splice(2, 1);
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-5131-947-MBV-001=B")) {
+    const newTables = [...tables];
+    return newTables.slice(5);
+  }
+
+  if (name.includes("LD-5400.00-5156-940-VWI-501=N")) {
+    const newTables = [...tables];
+    newTables[5]!.cells[8]!.content = "REV.";
+    return newTables.slice(5);
+  }
+
+  if (name.includes("LD-5400.00-5147-970-XCO-001=A")) {
+    const newTables = [...tables];
+    newTables[3]!.cells = [
+      ...newTables[3]!.cells
+        .filter(
+          (c) =>
+            c.rowIndex >= 4 && (c.columnIndex === 3 || c.columnIndex === 4),
+        )
+        .map((c) => ({
+          ...c,
+          rowIndex: c.rowIndex - 4,
+          columnIndex: c.columnIndex - 3,
+        })),
+      ...newTables[4]!.cells
+        .filter(
+          (c) =>
+            c.rowIndex >= 2 && (c.columnIndex === 4 || c.columnIndex === 5),
+        )
+        .map((c) => ({
+          ...c,
+          rowIndex: c.rowIndex - 1,
+          columnIndex: c.columnIndex - 4,
+        })),
+    ];
+
+    return [newTables[3]!];
+  }
+
+  if (name.includes("LD-5400.00-5131-811-FRB-002=C")) {
+    const newTables = [...tables];
+    newTables[4]!.cells[3]!.content = "REV.";
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-5131-812-FRB-003=B")) {
+    const newTables = [...tables];
+    newTables[4]!.cells[3]!.content = "REV.";
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-5147-940-XCO-001=0")) {
+    const newTables = [...tables];
+    newTables[3]!.cells = [
+      ...newTables[3]!.cells
+        .slice(13)
+        .map((c) => ({ ...c, rowIndex: c.rowIndex - 4 })),
+      ...newTables[4]!.cells.slice(22),
+    ]
+      .filter((c) => c.columnIndex === 3 || c.columnIndex === 4)
+      .map((cell) => ({
+        ...cell,
+        columnIndex: cell.columnIndex - 3,
+      }));
+
+    newTables[3]!.columnCount = 2;
+    newTables[3]!.rowCount = newTables[3]!.cells.length / 2;
+
+    return [newTables[3]!];
+  }
+
+  if (name.includes("LD-5400.00-5147-769-WDD-501=E")) {
+    const newTables = [...tables];
+    newTables[4]!.cells.splice(20, 0, {
+      content: "Nº DO DOCUMENTO",
+      columnIndex: 3,
+      rowIndex: 1,
+    });
+
+    newTables[4]!.cells = newTables[4]!.cells
+      .filter((c) => c.rowIndex !== 0)
+      .map((c) => ({ ...c, rowIndex: c.rowIndex - 1 }));
+
+    return newTables;
+  }
+
+  const skipHeadersDocs: Record<string, number> = {
+    "LD-5400.00-5606-940-PHN-004=0": 2,
+    "LD-5400.00-5000-940-PHN-104=0": 2,
+  };
+
+  if (Object.keys(skipHeadersDocs).some((doc) => name.includes(doc))) {
+    const key = Object.keys(skipHeadersDocs).find((doc) => name.includes(doc));
+    if (!tables[4]) {
+      console.warn(`[${key}] Could not find table 4 to fix extraction`);
+      return tables;
+    }
+
+    const skip = skipHeadersDocs[key!]!;
+
+    const newTables = [...tables];
+
+    newTables[4]!.cells = newTables[4]!.cells
+      .filter((c) => c.rowIndex > skip)
+      .map((c) => ({ ...c, rowIndex: c.rowIndex - skip + 1 }));
 
     return newTables;
   }

@@ -65,8 +65,7 @@ export function tableToCSV(
           if (cell === "") return "";
           return `"${cell}"`;
         })
-        .join(",")
-        .trim(),
+        .join(","),
     )
     .filter((row) => !!row.trim());
 
