@@ -2,6 +2,17 @@ import { pdfToPng } from "pdf-to-png-converter";
 import { createAzure } from "@ai-sdk/azure";
 import { generateText } from "ai";
 
+import { pino } from "pino";
+
+const logger = pino({
+  transport: {
+    target: "pino-pretty",
+    options: {
+      colorize: true,
+    },
+  },
+});
+
 const azure = createAzure({
   apiKey: process.env.AZURE_API_KEY!,
   resourceName: process.env.AZURE_RESOURCE_NAME!,
@@ -32,7 +43,7 @@ async function main() {
     }
 
     const { text } = await generateText({
-      model: azure("gpt-5-mini"),
+      model: azure("gpt-5-chat"),
       messages: [
         { role: "system", content: SYSTEM_PROMPT.trim() },
         {
@@ -42,9 +53,42 @@ async function main() {
       ],
     });
 
-    await Bun.write(`./ai/responses/${inputFilename}.txt`, text);
-    console.log(inputFilename);
-    console.log(text);
+    const jsonResponse = JSON.parse(
+      text.replace("```json", "").replace(/```/g, ""),
+    );
+
+    if (!Array.isArray(jsonResponse)) {
+      throw new Error(`[${inputFilename}] Invalid JSON response - ${text}`);
+    }
+
+    await Bun.write(`./ai/responses/${inputFilename}.txt`, jsonResponse);
+    logger.info(`Input filename to check: ${inputFilename}`);
+    logger.info(`AI found columns: ${jsonResponse.join(", ")}`);
+
+    const azureOutput = await Bun.file(
+      `./assets/${inputFilename.replace(/\.pdf$/i, ".json")}`,
+    ).json();
+
+    const matchingCells: Array<[number, { content: string }[]]> =
+      azureOutput.tables
+        .map((table: { cells: { content: string }[] }, index: number) => {
+          return [
+            index,
+            table.cells.filter((cell: { content: string }) => {
+              return jsonResponse.some((aiHeader: string) =>
+                cell.content.includes(aiHeader),
+              );
+            }),
+          ];
+        })
+        .filter(
+          ([, cell]: [number, { content: string }[]]) =>
+            cell && cell.length > 0,
+        );
+
+    logger.info(
+      `Found matching cells at ${matchingCells.map(([index, cells]) => `Table ${index + 1}, ${cells.map((cell) => `\`${cell.content}\``).join(", ")}`).join(", ")}`,
+    );
   }
 }
 

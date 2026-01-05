@@ -84,7 +84,8 @@ export async function handleLDCached(path: string) {
     return;
   }
 
-  data.tables = fixTableByName(path, data.tables);
+  // TODO
+  // data.tables = fixTableByName(path, data.tables);
 
   const htmlsPerPage: Record<number, string[]> = {};
   const rowsPerPage: Record<

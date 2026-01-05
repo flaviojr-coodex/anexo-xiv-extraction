@@ -2,14 +2,26 @@ import {
   AzureKeyCredential,
   DocumentAnalysisClient,
 } from "@azure/ai-form-recognizer";
+import { pino } from "pino";
 import type { AzureTable } from "./handle-tables";
+
+const logger = pino({
+  transport: {
+    target: "pino-pretty",
+    options: {
+      colorize: true,
+    },
+  },
+});
 
 export async function analyzeDocument(path: string, pages?: string) {
   if (
     !Bun.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT ||
     !Bun.env.AZURE_DOCUMENT_INTELLIGENCE_API_KEY
   ) {
-    console.error("Missing environment variables");
+    logger.error(
+      "Missing required environment variables: AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT and/or AZURE_DOCUMENT_INTELLIGENCE_API_KEY",
+    );
     process.exit(1);
   }
 
@@ -22,9 +34,12 @@ export async function analyzeDocument(path: string, pages?: string) {
 
   const result = await client
     .beginAnalyzeDocument("prebuilt-layout", pdfBuffer, { pages })
-    .then((poller) => poller.pollUntilDone());
+    .then((poller) => {
+      logger.debug("Analysis polling started, waiting for completion...");
+      return poller.pollUntilDone();
+    });
 
-  return {
+  const processedResult = {
     ...omit(result, ["pages", "styles", "paragraphs"]),
     tables: result.tables?.map((table) => ({
       ...omit(table, ["spans"]),
@@ -36,10 +51,14 @@ export async function analyzeDocument(path: string, pages?: string) {
       ),
     })),
   };
+
+  logger.debug(`Processed and formatted analysis result`);
+  return processedResult;
 }
 
 export async function analyzeDocumentCached(path: string, pages?: string) {
   const jsonPath = path.replace(".pdf", ".json").replace(".PDF", ".json");
+
   if (await Bun.file(jsonPath).exists()) {
     return Bun.file(jsonPath).json() as Promise<{ tables: AzureTable[] }>;
   }

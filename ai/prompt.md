@@ -8,7 +8,7 @@ You must analyze table headers extracted from PDF OCR and determine whether each
 corresponds to a document identifier.
 
 A column SHOULD be mapped to "documentName" if it:
-- Contains document numbers, codes, or identifiers (e.g. DE-5400..., DB-5400..., N-1710)
+- Contains document numbers, codes, or identifiers on the rows (e.g. DE-5400..., DB-5400..., N-1710)
 - Refers to a document registry, numbering system, or official document ID
 - Is used to uniquely identify a document within a list or index
 
@@ -45,7 +45,7 @@ You MUST NOT map:
 - "PEDIDO DE COMPRA Nº"
 
 ### Output format:
-Return ONLY a JSON array with the detected column headers.
+Return ONLY a JSON array with the detected column headers names.
 
 Do not include explanations.
 Do not normalize or make up the header text. If you cannot determine the header, return the explanation.
