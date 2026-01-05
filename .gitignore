@@ -35,5 +35,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 tables/
 assets/LD-*
+assets-5/LD-*
+assets-12/LD-*
 ai/pngs
 ai/responses
