@@ -5,31 +5,33 @@ import { handleAnexoXIVCached } from "./anexo-xiv";
 import { handleLDCached } from "./lds";
 import { pino } from "pino";
 
-const logger = pino({
-  transport: {
-    target: "pino-pretty",
-    options: {
-      colorize: true,
-    },
-  },
-});
+// const logger = pino({
+//   transport: {
+//     target: "pino-pretty",
+//     options: {
+//       colorize: true,
+//     },
+//   },
+// });
 
 const s3 = new Bun.S3Client({ region: "us-east-1", bucket: "heftos-ged" });
 
-const ignoredLDs = new Set<string>([]);
+const ignoredLDs = new Set<string>([
+  "LD-5400.00-4710-746-RLM-002=A.pdf", // CANCELADO - NO TABLES
+]);
 
 const gedMissingLDs = new Set<string>();
 const processedLDs = new Set<string>();
 
 async function main() {
-  logger.info("Starting ANEXO XIV extraction process");
+  // logger.info("Starting ANEXO XIV extraction process");
   const rowsPerPage = await handleAnexoXIVCached();
-  logger.debug("ANEXO XIV cached, proceeding to handle LDs recursively");
+  // logger.debug("ANEXO XIV cached, proceeding to handle LDs recursively");
   await handleLDsRecursive("ANEXO XIV", rowsPerPage);
 
-  logger.error(
-    `No documents found on DB for ${gedMissingLDs.size} missing LDs: ${Array.from(gedMissingLDs).join(", ")}`,
-  );
+  // logger.error(
+  //   `No documents found on DB for ${gedMissingLDs.size} missing LDs: ${Array.from(gedMissingLDs).join(", ")}`,
+  // );
 }
 
 async function handleLDsRecursive(
@@ -41,7 +43,7 @@ async function handleLDsRecursive(
   await handleDownloadMentionedLDs(source, rowsPerPage);
 
   const assets = await readdir("./assets");
-  logger.debug(`Found ${assets.length} files in assets directory`);
+  // logger.debug(`Found ${assets.length} files in assets directory`);
 
   for (const filename of assets) {
     if (!isLDPdf(filename)) continue;
@@ -49,7 +51,7 @@ async function handleLDsRecursive(
     if (processedLDs.has(filename)) continue;
     processedLDs.add(filename);
 
-    logger.debug(`Processing LD file: ${filename}`);
+    // logger.debug(`Processing LD file: ${filename}`);
     const result = await handleLDCached(`./assets/${filename}`);
     if (!result) continue;
 
@@ -64,7 +66,7 @@ async function handleDownloadMentionedLDs(
   >,
 ) {
   if (Object.values(rowsPerPage).flat().length === 0) {
-    logger.debug(`[${source}] No rows found to process`);
+    // logger.debug(`[${source}] No rows found to process`);
     return;
   }
 
@@ -93,21 +95,21 @@ async function handleDownloadMentionedLDs(
     .filter((row) => !existingLDs.some((ld) => ld.includes(row.documentName)));
 
   if (!missingLDs || missingLDs.length === 0) {
-    logger.debug(`[${source}] All LD documents already exist in assets`);
+    // logger.debug(`[${source}] All LD documents already exist in assets`);
     return;
   }
 
-  logger.info(
-    `[${source}] Found ${missingLDs.length} missing LD documents. Searching MongoDB...`,
-  );
+  // logger.info(
+  //   `[${source}] Found ${missingLDs.length} missing LD documents. Searching MongoDB...`,
+  // );
 
   const documentsCollection = mongoose.connection.db!.collection<{
     blobPath: string;
   }>("documents");
 
-  logger.debug(
-    `[${source}] Querying MongoDB for documents matching: ${missingLDs.map((row) => row.documentName).join("|")}`,
-  );
+  // logger.debug(
+  //   `[${source}] Querying MongoDB for documents matching: ${missingLDs.map((row) => row.documentName).join("|")}`,
+  // );
 
   const documents = await documentsCollection
     .find(
@@ -127,14 +129,14 @@ async function handleDownloadMentionedLDs(
     )
     .toArray();
 
-  logger.debug(
-    `[${source}] MongoDB query returned ${documents?.length || 0} documents`,
-  );
+  // logger.debug(
+  //   `[${source}] MongoDB query returned ${documents?.length || 0} documents`,
+  // );
 
   if (!documents || documents.length === 0) {
-    logger.warn(
-      `[${source}] No documents found in MongoDB for ${missingLDs.length} missing LDs`,
-    );
+    // logger.warn(
+    //   `[${source}] No documents found in MongoDB for ${missingLDs.length} missing LDs`,
+    // );
     missingLDs.forEach((ld) => gedMissingLDs.add(ld.documentName));
     return;
   }
@@ -145,28 +147,28 @@ async function handleDownloadMentionedLDs(
     );
 
     if (!document) {
-      logger.debug(
-        `[${source}] Document not found in MongoDB for ${row.documentName}`,
-      );
+      // logger.debug(
+      //   `[${source}] Document not found in MongoDB for ${row.documentName}`,
+      // );
       gedMissingLDs.add(row.documentName);
       continue;
     }
 
     const filename = document.blobPath.split("/").pop()!;
-    logger.info(`[${source}] Downloading ${document.blobPath} to assets`);
-    logger.debug(`[${source}] Downloading to ./assets/${filename}`);
+    // logger.info(`[${source}] Downloading ${document.blobPath} to assets`);
+    // logger.debug(`[${source}] Downloading to ./assets/${filename}`);
 
     const file = await s3.file(document.blobPath).arrayBuffer();
     await Bun.write(`./assets/${filename}`, file);
 
-    logger.debug(
-      `[${source}] Successfully downloaded ${filename} (${file.byteLength} bytes)`,
-    );
+    // logger.debug(
+    //   `[${source}] Successfully downloaded ${filename} (${file.byteLength} bytes)`,
+    // );
   }
 
-  logger.info(
-    `[${source}] Download complete. Processed ${missingLDs.length - gedMissingLDs.size} documents`,
-  );
+  // logger.info(
+  //   `[${source}] Download complete. Processed ${missingLDs.length - gedMissingLDs.size} documents`,
+  // );
 }
 
 function isLDPdf(filename: string) {

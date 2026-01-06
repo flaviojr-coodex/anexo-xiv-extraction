@@ -89,6 +89,7 @@ async function main() {
     logger.info(
       `Found matching cells at ${matchingCells.map(([index, cells]) => `Table ${index + 1}, ${cells.map((cell) => `\`${cell.content}\``).join(", ")}`).join(", ")}`,
     );
+    console.log();
   }
 }
 
