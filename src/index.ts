@@ -5,19 +5,32 @@ import { handleAnexoXIVCached } from "./anexo-xiv";
 import { handleLDCached } from "./lds";
 import { pino } from "pino";
 
-// const logger = pino({
-//   transport: {
-//     target: "pino-pretty",
-//     options: {
-//       colorize: true,
-//     },
-//   },
-// });
+const logger = pino({
+  transport: {
+    target: "pino-pretty",
+    options: {
+      colorize: true,
+    },
+  },
+});
 
 const s3 = new Bun.S3Client({ region: "us-east-1", bucket: "heftos-ged" });
 
 const ignoredLDs = new Set<string>([
   "LD-5400.00-4710-746-RLM-002=A.pdf", // CANCELADO - NO TABLES
+  "LD-5400.00-4710-970-FE3-001=A.pdf", // CANCELADO - NO TABLES
+  "LD-5400.00-5412-940-VWI-001=A.PDF", // CANCELADO - NO TABLES
+  "LD-5400.00-4710-312-VCE-300=A.PDF", // CANCELADO - NO TABLES
+  "LD-5400.00-4710-713-EHJ-001=A.pdf", // CANCELADO - NO TABLES
+  "LD-5400.00-4710-713-EHJ-003=A.pdf", // CANCELADO - NO TABLES
+  "LD-5400.00-4710-713-EHJ-009=A.pdf", // CANCELADO - NO TABLES
+  "LD-5400.00-4700-712-BIZ-501=A.pdf", // CANCELADO - NO TABLES
+  "LD-5400.00-4710-812-YAS-304=A.pdf", // CANCELADO - NO TABLES
+  "LD-5400.00-4710-392-IKW-300=A.pdf", // CANCELADO - Weird table, only refers to itself
+  "LD-5400.00-1231-940-PPC-301=K.pdf", // CANCELADO - Weird table, only refers to itself
+  "LD-5400.00-4700-737-WD1-501=A.pdf", // CANCELADO - Weird table, only refers to itself
+  "LD-5400.00-4710-814-MHG-002=0.PDF", // CANCELADO - Weird table, only refers to itself
+  "LD-5400.00-4710-700-T1A-301=A.pdf", // CANCELADO - Weird table, no LDs mentioned
 ]);
 
 const gedMissingLDs = new Set<string>();
@@ -29,9 +42,9 @@ async function main() {
   // logger.debug("ANEXO XIV cached, proceeding to handle LDs recursively");
   await handleLDsRecursive("ANEXO XIV", rowsPerPage);
 
-  // logger.error(
-  //   `No documents found on DB for ${gedMissingLDs.size} missing LDs: ${Array.from(gedMissingLDs).join(", ")}`,
-  // );
+  logger.error(
+    `No documents found on DB for ${gedMissingLDs.size} missing LDs: ${Array.from(gedMissingLDs).join(", ")}`,
+  );
 }
 
 async function handleLDsRecursive(
@@ -43,15 +56,12 @@ async function handleLDsRecursive(
   await handleDownloadMentionedLDs(source, rowsPerPage);
 
   const assets = await readdir("./assets");
-  // logger.debug(`Found ${assets.length} files in assets directory`);
-
   for (const filename of assets) {
     if (!isLDPdf(filename)) continue;
     if (ignoredLDs.has(filename)) continue;
     if (processedLDs.has(filename)) continue;
     processedLDs.add(filename);
 
-    // logger.debug(`Processing LD file: ${filename}`);
     const result = await handleLDCached(`./assets/${filename}`);
     if (!result) continue;
 
@@ -98,6 +108,13 @@ async function handleDownloadMentionedLDs(
     // logger.debug(`[${source}] All LD documents already exist in assets`);
     return;
   }
+
+  // START MANUAL
+  // missingLDs.push({
+  //   documentName: "LD-5400.00-4700-737-WD1-501",
+  //   revision: "A",
+  // });
+  // END - MANUAL
 
   // logger.info(
   //   `[${source}] Found ${missingLDs.length} missing LD documents. Searching MongoDB...`,

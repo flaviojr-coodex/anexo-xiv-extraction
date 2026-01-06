@@ -1,15 +1,20 @@
 import { tableToCSV, tableToHTML, type AzureTable } from "./handle-tables";
 import { analyzeDocumentCached } from "./document-intelligence";
-import { fixMergedRevisionColumns } from "./fix-revision";
+import {
+  fixMergedRevisionColumns,
+  fixMergedDocumentColumns,
+} from "./fix-revision";
 import { csv2json } from "./csv2json";
 
 const DOCUMENT_NAME_COLUMN_MAP = {
   "NUMERO DO DOCUMENTO PETROBRAS": "documentName",
+  "Nº DO DOCUMENTO (N-1710)": "documentName",
   "Nº PETROBRAS ( N-1710 )": "documentName",
   "Nº PETROBRÁS ( N-1710 )": "documentName",
   "Nº PETROBRAS (N-1710 )": "documentName",
   "Numero do Documento": "documentName",
   "NUMERO DO DOCUMENTO": "documentName",
+  "DOCUMENTO PETROBRAS": "documentName",
   "NÚMERO DO DOCUMENTO": "documentName",
   ". Nº DO DOCUMENTO": "documentName",
   "NÚM. DO DOCUMENTO": "documentName",
@@ -30,6 +35,7 @@ const DOCUMENT_NAME_COLUMN_MAP = {
   "O DOCUMENTO": "documentName",
   "Nº Cliente": "documentName",
   "Número CBM": "documentName",
+  "N-1710 Nº": "documentName",
   "Nº N-1710": "documentName",
   "Nr.N1710": "documentName",
   "Nº 1710": "documentName",
@@ -37,6 +43,10 @@ const DOCUMENT_NAME_COLUMN_MAP = {
   CÓDIGO: "documentName",
   NÚMERO: "documentName",
   NUMERO: "documentName",
+  NUMERAÇÃO: "documentName",
+  "No.": "documentName",
+  "NUMBER DOCUMENT": "documentName",
+  "Número N-1710": "documentName",
 };
 
 const REVISION_COLUMN_MAP = {
@@ -51,6 +61,7 @@ const REVISION_COLUMN_MAP = {
   "Rev.": "revision",
   "FEV.": "revision",
   "REV.": "revision",
+  "REV .": "revision",
   Bev: "revision",
   BEV: "revision",
   REY: "revision",
@@ -61,6 +72,36 @@ const REVISION_COLUMN_MAP = {
 };
 
 const COLUMN_NAMES = { ...DOCUMENT_NAME_COLUMN_MAP, ...REVISION_COLUMN_MAP };
+
+const documentMergedFixes: Record<
+  string,
+  { tableIndex: number[]; documentColumnIndex: number }
+> = {
+  "LD-5400.00-4710-640-VCE-101=D_COMENTADO": {
+    tableIndex: [7, 9],
+    documentColumnIndex: 1,
+  },
+  "LD-5400.00-4710-312-VCE-001=E_COMENTADO": {
+    tableIndex: [7],
+    documentColumnIndex: 1,
+  },
+  "LD-5400.00-4710-640-VCE-001=D": {
+    tableIndex: [8],
+    documentColumnIndex: 1,
+  },
+  "LD-5400.00-4730-312-VCE-001=A": {
+    tableIndex: [5, 7],
+    documentColumnIndex: 1,
+  },
+  "LD-5400.00-4710-640-VCE-301=B_comentado": {
+    tableIndex: [5, 7, 9],
+    documentColumnIndex: 1,
+  },
+  "LD-5400.00-4710-392-IKW-300=A": {
+    tableIndex: [3],
+    documentColumnIndex: 1,
+  },
+};
 
 const excludedColumns = ["O DOCUMENTO"];
 
@@ -84,8 +125,7 @@ export async function handleLDCached(path: string) {
     return;
   }
 
-  // TODO
-  // data.tables = fixTableByName(path, data.tables);
+  data.tables = fixTableByName(path, data.tables);
 
   const htmlsPerPage: Record<number, string[]> = {};
   const rowsPerPage: Record<
@@ -135,6 +175,8 @@ function extractAndParseTable(table: AzureTable, folder: string) {
   let csv = tableToCSV(table);
   let strCsv = csv.join("\n");
   let rowsOffset = 0;
+
+  if (folder.includes("LD-5400.00-4710-970-FE3-001=A")) console.log(csv);
 
   if (!hasMatch(matches, strCsv)) return; // Relevant documents table
   if (csv[0] && !hasMatch(matches, csv[0])) {
@@ -284,6 +326,34 @@ function fixTableByName(name: string, tables: AzureTable[]): AzureTable[] {
   if (name.includes("LD-5400.00-5131-947-MBV-001=B")) {
     const newTables = [...tables];
     return newTables.slice(5);
+  }
+
+  if (name.includes("LD-5400.00-4710-831-HIT-301=A")) {
+    const newTables = [...tables].slice(2);
+    newTables[0]!.cells = [
+      ...newTables[0]!.cells
+        .filter((c) => c.rowIndex >= 1)
+        .map((c) => ({
+          ...c,
+          rowIndex: c.rowIndex - 1,
+        })),
+    ];
+
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-4710-814-MHG-001=0_COMENTADO")) {
+    const newTables = [...tables].slice(3);
+    newTables[0]!.cells = [
+      ...newTables[0]!.cells
+        .filter((c) => c.rowIndex >= 3)
+        .map((c) => ({
+          ...c,
+          rowIndex: c.rowIndex - 3,
+        })),
+    ];
+
+    return newTables;
   }
 
   if (name.includes("LD-5400.00-5156-940-VWI-501=N")) {
@@ -440,6 +510,174 @@ function fixTableByName(name: string, tables: AzureTable[]): AzureTable[] {
       tableIndex: [6],
     },
   };
+
+  // EAP Pattern Fix: Remove EAP number, keep document code
+  if (name.includes("LD-5400.00-4710-746-NUT-302=0_COMENTADO")) {
+    const newTables = [...tables];
+    if (newTables[5]) {
+      newTables[5].cells = newTables[5].cells.map((c) => {
+        if (c.columnIndex === 0 && c.content) {
+          const parts = c.content.trim().split(/\s+/);
+          if (parts.length >= 2) {
+            c.content = parts.slice(1).join(" ");
+          }
+        }
+        return c;
+      });
+    }
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-4710-700-T1A-301=A")) {
+    const newTables = [...tables];
+    if (newTables[5]) {
+      newTables[5].cells = newTables[5].cells.map((c) => {
+        if (c.columnIndex === 0 && c.content) {
+          const parts = c.content.trim().split(/\s+/);
+          if (parts.length >= 2) {
+            c.content = parts.slice(1).join(" ");
+          }
+        }
+        return c;
+      });
+    }
+    return newTables;
+  }
+
+  // PC Pattern Fix: Remove item number and PC number, keep document code
+  if (name.includes("LD-5400.00-4700-741-WD1-501=A")) {
+    const newTables = [...tables];
+    if (newTables[4]) {
+      newTables[4].cells = newTables[4].cells.map((c) => {
+        if (c.columnIndex === 0 && c.content) {
+          const parts = c.content.trim().split(/\s+/);
+          if (parts.length >= 3) {
+            c.content = parts.slice(2).join(" ");
+          }
+        }
+        return c;
+      });
+    }
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-4700-726-WD1-501=A")) {
+    const newTables = [...tables];
+    if (newTables[3]) {
+      newTables[3].cells = newTables[3].cells.map((c) => {
+        if (c.columnIndex === 0 && c.content) {
+          const parts = c.content.trim().split(/\s+/);
+          if (parts.length >= 3) {
+            c.content = parts.slice(2).join(" ");
+          }
+        }
+        return c;
+      });
+    }
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-4700-737-WD1-501=A")) {
+    const newTables = [...tables];
+    if (newTables[4]) {
+      newTables[4].cells = newTables[4].cells.map((c) => {
+        if (c.columnIndex === 0 && c.content) {
+          const parts = c.content.trim().split(/\s+/);
+          if (parts.length >= 3) {
+            c.content = parts.slice(2).join(" ");
+          }
+        }
+        return c;
+      });
+    }
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-4700-760-WD1-501=A")) {
+    const newTables = [...tables];
+    if (newTables[4]) {
+      newTables[4].cells = newTables[4].cells.map((c) => {
+        if (c.columnIndex === 0 && c.content) {
+          const parts = c.content.trim().split(/\s+/);
+          if (parts.length >= 3) {
+            c.content = parts.slice(2).join(" ");
+          }
+        }
+        return c;
+      });
+    }
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-4700-773-WD1-501=A")) {
+    const newTables = [...tables];
+    if (newTables[3]) {
+      newTables[3].cells = newTables[3].cells.map((c) => {
+        if (c.columnIndex === 0 && c.content) {
+          const parts = c.content.trim().split(/\s+/);
+          if (parts.length >= 3) {
+            c.content = parts.slice(2).join(" ");
+          }
+        }
+        return c;
+      });
+    }
+    return newTables;
+  }
+
+  if (name.includes("LD-5400.00-4700-797-WD1-501=A")) {
+    const newTables = [...tables];
+    if (newTables[3]) {
+      newTables[3].cells = newTables[3].cells.map((c) => {
+        if (c.columnIndex === 0 && c.content) {
+          const parts = c.content.trim().split(/\s+/);
+          if (parts.length >= 3) {
+            c.content = parts.slice(2).join(" ");
+          }
+        }
+        return c;
+      });
+    }
+    return newTables;
+  }
+
+  // VCE/IKW documents: Fix merged header cells before splitting data cells
+  if (Object.keys(documentMergedFixes).some((k) => name.includes(k))) {
+    const newTables = [...tables];
+    const matchedKey = Object.keys(documentMergedFixes).find((k) =>
+      name.includes(k),
+    )!;
+    const fix = documentMergedFixes[matchedKey]!;
+
+    // Fix header cells in target tables
+    for (const tIdx of fix.tableIndex) {
+      if (newTables[tIdx]) {
+        newTables[tIdx].cells = newTables[tIdx].cells.map((c) => {
+          // Find cells at document column that contain merged header pattern
+          if (c.columnIndex === fix.documentColumnIndex && c.content) {
+            const content = c.content;
+            // Match patterns like "Nº DOCUMENTO (PETROBRAS) DESCRIÇÃO" or "Número N-1710 Número de controle..."
+            if (
+              (content.includes("DOCUMENTO") &&
+                content.includes("DESCRIÇÃO")) ||
+              (content.includes("Número N-1710") &&
+                content.includes("controle"))
+            ) {
+              c.content = "Nº DOCUMENTO";
+            }
+          }
+          return c;
+        });
+      }
+    }
+
+    // Now split data cells
+    return fixMergedDocumentColumns({
+      name,
+      tables: newTables,
+      documentMergedFixes,
+    });
+  }
 
   if (Object.keys(revisionMergedFixes).some((k) => name.includes(k))) {
     return fixMergedRevisionColumns({ name, tables, revisionMergedFixes });
