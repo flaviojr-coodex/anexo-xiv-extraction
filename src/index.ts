@@ -26,11 +26,21 @@ const ignoredLDs = new Set<string>([
   "LD-5400.00-4710-713-EHJ-009=A.pdf", // CANCELADO - NO TABLES
   "LD-5400.00-4700-712-BIZ-501=A.pdf", // CANCELADO - NO TABLES
   "LD-5400.00-4710-812-YAS-304=A.pdf", // CANCELADO - NO TABLES
-  "LD-5400.00-4710-392-IKW-300=A.pdf", // CANCELADO - Weird table, only refers to itself
-  "LD-5400.00-1231-940-PPC-301=K.pdf", // CANCELADO - Weird table, only refers to itself
-  "LD-5400.00-4700-737-WD1-501=A.pdf", // CANCELADO - Weird table, only refers to itself
-  "LD-5400.00-4710-814-MHG-002=0.PDF", // CANCELADO - Weird table, only refers to itself
-  "LD-5400.00-4710-700-T1A-301=A.pdf", // CANCELADO - Weird table, no LDs mentioned
+  "LD-5400.00-4710-392-IKW-300=A.pdf", // Weird table, only refers to itself
+  "LD-5400.00-1231-940-PPC-301=K.pdf", // Weird table, only refers to itself
+  "LD-5400.00-4700-737-WD1-501=A.pdf", // Weird table, only refers to itself
+  "LD-5400.00-4710-814-MHG-002=0.PDF", // Weird table, only refers to itself
+  "LD-5400.00-4710-700-T1A-301=A.pdf", // Weird table, no LDs mentioned
+  "LD-5400.00-4710-947-SQQ-002=A.pdf", // Bad format - Only refers to itself
+  "LD-5400.00-4710-947-SQQ-302=0.pdf", // Bad format - Only refers to itself
+  "LD-5400.00-4710-800-EYQ-001=A.pdf", // Bad format - Only refers to itself
+  "LD-5400.00-4710-800-EYQ-301=A.pdf", // Bad format - Only refers to itself
+  "LD-5400.00-4710-746-RLM-050=A.pdf", // Bad format - Only refers to itself
+  "LD-5400.00-4710-746-RLM-302=A.pdf", // Bad format - Only refers to itself
+  "LD-5400.00-4710-229-HJI-001=A.pdf", // Bad format - Only refers to itself
+  "LD-5400.00-4710-855-MBV-311=A.pdf", // Bad format - Only refers to itself
+  "LD-5400.00-4710-947-SQQ-004=A.pdf", // Bad format - Only refers to itself
+  "LD-5400.00-4710-800-FE3-005=0_COMENTADO.pdf", // Bad format - Only refers to itself
 ]);
 
 const gedMissingLDs = new Set<string>();
@@ -43,8 +53,10 @@ async function main() {
   await handleLDsRecursive("ANEXO XIV", rowsPerPage);
 
   logger.error(
-    `No documents found on DB for ${gedMissingLDs.size} missing LDs: ${Array.from(gedMissingLDs).join(", ")}`,
+    `No documents found on DB for ${gedMissingLDs.size} missing LDs`,
   );
+
+  console.dir(Array.from(gedMissingLDs), { depth: null });
 }
 
 async function handleLDsRecursive(
@@ -134,7 +146,9 @@ async function handleDownloadMentionedLDs(
         $and: [
           {
             blobPath: {
-              $regex: missingLDs.map((row) => row.documentName).join("|"),
+              $regex: missingLDs
+                .map((row) => row.documentName.trim())
+                .join("|"),
               $options: "i",
             },
           },
